@@ -1,9 +1,7 @@
 #<script type="text/coffeescript" target="/home/wangyu/IdeaProjects/piao/1227/src/static/js/widget/async_module.js">
 ###
-    init
+    init auto load event
 ###
-
-
 do ()->
     # create style for async-module
 #    $("<style type='text/css'> .async-module{display: none} </style>").appendTo("head");
@@ -46,7 +44,9 @@ do ()->
         # binding on window.onload has no effect
         asyncLoadTrigger()
 
-
+###
+    add loadModule() as jquery plugin function
+###
 tools =
     getAttribute: (domString) ->
         ret = {}
@@ -106,7 +106,7 @@ tools =
         target.css('background', 'red')
 
 CONFIG =
-    DEBUG: true
+    DEBUG: true && location.search.indexOf('AD') isnt -1
 
 if CONFIG.DEBUG is true
     CONFIG.bufferHeight =  -100
