@@ -1,48 +1,18 @@
 #<script type="text/coffeescript" target="/home/wangyu/IdeaProjects/piao/1227/src/static/js/widget/async_module.js">
 ###
-    init auto load event
+   music: /home/wangyu/IdeaProjects/jch/asyncVersion/src/common/async_module/jquery.asyncModule.js
+   piao: /home/wangyu/IdeaProjects/piao/1227/src/static/js/widget/async_module.js
 ###
-do ()->
-    # create style for async-module
-#    $("<style type='text/css'> .async-module{display: none} </style>").appendTo("head");
 
-    modules = $ '.async-module'
-    $win = $ window
+###
+    configuration
+###
+CONFIG =
+    DEBUG: true && location.search.indexOf('AD') isnt -1
 
-    asyncLoad = (preDistance = 0)->
-        for _obj, index in modules
-            #console.log "handle #{index}/#{modules.length}"
-            obj = modules.eq(index)
-            if obj.offset().top < ($win.scrollTop() + $win.height() + preDistance)
-                #console.log "loadmodule #{obj.attr('data-load-module')}"
-                obj.loadModule()
+if CONFIG.DEBUG is true
+    CONFIG.bufferHeight =  -30
 
-                # only one module will not walk through the clear function in the else statement
-                if index == modules.length - 1 then modules = modules.slice(index+1)
-            else
-                #console.log "later #{index}"
-                if index > 0
-                    modules = modules.slice(index)
-                break
-
-        if modules.length == 0
-            $win.off 'scroll', asyncLoadTrigger
-
-        return
-
-
-    asyncLoadTrigger = ()->
-        clearTimeout arguments.callee.tid
-        arguments.callee.tid = setTimeout ()->
-            asyncLoad( CONFIG.bufferHeight or $win.height()/2 )
-        , 50
-
-    # init events
-    if modules.length > 0
-        $win.on 'scroll', asyncLoadTrigger
-        # no need for register on window.onload event since this script is loading by requirejs
-        # binding on window.onload has no effect
-        asyncLoadTrigger()
 
 ###
     add loadModule() as jquery plugin function
@@ -104,12 +74,35 @@ tools =
 
         target.css('padding', '1px')
         target.css('background', 'red')
+    ###
+        load html, css, js fragment through ajax
+    ###
+    loadAjaxData: ()->
+        self = this
+        url = self.data "url"
+        return if not url
+        $.ajax
+            url: url
+            dataType: "json"
+        .done (retData)->
+            self.html retData.data.html
+            self.removeClass("css-loading")
 
-CONFIG =
-    DEBUG: true && location.search.indexOf('AD') isnt -1
+            (new Function(retData.data.js)).call(self)
+        .fail ()->
+            self.html "<div class='async-module-error'><a href='#'>长时间没有响应，点击重新加载</a></div>"
+            reload = self.find('.async-module-error')
+            reload.css
+                position: 'relative'
+                top: self.height() / 2 + 20
+                left: self.width() / 2 - 90
+            reload.on 'click', (e)->
+                e.preventDefault()
+                tools.loadAjaxData.call(self, url)
+                self.html ''
 
-if CONFIG.DEBUG is true
-    CONFIG.bufferHeight =  -100
+        return
+
 
 Debugger =
     id: 0
@@ -178,10 +171,12 @@ jQueryLoadModule = ()->
 
 
         switch type
-            when 'tmpl'
+            when 'ajax'
+                # out put debug info
+                tools.debug(this);
+
                 # load tmpl content in the script tag
-                tmpl = this.children()
-                this.html(tmpl.html())
+                tools.loadAjaxData.call($(this))
             else
                 # check if need async load by check the existance of '<\!--'
                 origin = this.html().replace(/(^\s*)|(\s*$)/g, "")
@@ -196,8 +191,56 @@ jQueryLoadModule = ()->
                 tools.loadHtml(source, this)
 
     catch e
-        if console then console.log e.stack
+        if CONFIG.debug then throw e
 
 # exposed as jquery plugin
 $.fn.loadModule = jQueryLoadModule
+
+
+###
+    init auto load event
+###
+do ()->
+    # create style for async-module
+#    $("<style type='text/css'> .async-module{display: none} </style>").appendTo("head");
+
+    modules = $ '.async-module'
+    $win = $ window
+
+    asyncLoad = (preDistance = 0)->
+        moduleCountToLoad = 0
+        scrollTop = $win.scrollTop()
+        winHeight = $win.height()
+        for index in [0...modules.length] by 1
+            #console.log "handle #{index}/#{modules.length}"
+            obj = modules.eq(index)
+            # 删除元素后，留下的是undefined，直接eq undefined 出来的jQuery 对象并不是undefined，而是obj[0]为undefined
+            if obj[0] isnt undefined
+                top = obj.offset().top
+
+                if top < (scrollTop + winHeight + preDistance) && (scrollTop - preDistance - obj.height()) < top
+                    #console.log "loadmodule #{obj.attr('data-load-module')}"
+                    obj.loadModule()
+                    delete modules[index]
+                else
+                    moduleCountToLoad++
+
+        if moduleCountToLoad is 0
+            $win.off 'scroll', asyncLoadTrigger
+
+        return
+
+
+    asyncLoadTrigger = ()->
+        clearTimeout arguments.callee.tid
+        arguments.callee.tid = setTimeout ()->
+            asyncLoad( CONFIG.bufferHeight or $win.height()/2 )
+        , 50
+
+    # init events
+    if modules.length > 0
+        $win.on 'scroll', asyncLoadTrigger
+        # no need for register on window.onload event since this script is loading by requirejs
+        # binding on window.onload has no effect
+        asyncLoad()
 #</script>
