@@ -8,11 +8,13 @@
     configuration
 */
 
-var CONFIG, Debugger, jQueryLoadModule, tools;
+var AsyncDOM, CONFIG, DEBUG, Debugger, jQueryLoadModule, tools, util;
 
 CONFIG = {
-  DEBUG: true && location.search.indexOf('AD') !== -1
+  DEBUG: false && location.search.indexOf('AD') !== -1
 };
+
+DEBUG = CONFIG.DEBUG;
 
 if (CONFIG.DEBUG === true) {
   CONFIG.bufferHeight = -30;
@@ -114,23 +116,157 @@ tools = {
   }
 };
 
+/*
+*/
+
+
+util = {
+  reg_JS: /<script([^>]*)>([\w\W]*?)<\/script>/g,
+  reg_comment_wrapper: /(^<\!--)|(-->$)/g
+};
+
+/*
+
+    Class: AsyncDom (AsyncModule)
+*/
+
+
+AsyncDOM = (function() {
+  function AsyncDOM(root, domStr) {
+    this.root = root;
+    this.domStr = domStr;
+    this.load(root);
+  }
+
+  /*
+      提取出script标签中的内容
+      @return {Object}
+          -   remain 剩余的DOM
+          -   matched 匹配到的标签中的内容
+  */
+
+
+  AsyncDOM.prototype.filterJS = function(str) {
+    var matched, remain;
+    matched = "";
+    remain = str.replace(util.reg_JS, function(match, p1, p2, offset, origin) {
+      matched += p2;
+      return "";
+    });
+    return {
+      remain: remain,
+      matched: matched
+    };
+  };
+
+  /*
+      execute script
+  */
+
+
+  AsyncDOM.prototype.exec = function(JSStr, parent) {
+    return (new Function(JSStr)).call(parent);
+  };
+
+  AsyncDOM.prototype._prepareHTML = function(str) {
+    var JSStripped;
+    JSStripped = this.filterJS(str);
+    return {
+      js: JSStripped.matched,
+      dom: JSStripped.remain
+    };
+  };
+
+  AsyncDOM.prototype.load = function(parent) {
+    var html, origin, source, _debug_time;
+    DEBUG && (_debug_time = []);
+    origin = this.domStr.replace(/(^\s*)|(\s*$)/g, "");
+    if (origin.indexOf('<\!--') === -1) {
+      return;
+    }
+    DEBUG && _debug_time.push(new Date());
+    source = origin.replace(util.reg_comment_wrapper, "");
+    html = this._prepareHTML(source);
+    DEBUG && _debug_time.push(new Date());
+    if (html.dom) {
+      if (html.dom.replace(/(^\s*)|(\s*$)/g, "").length > 0) {
+        parent.html(html.dom);
+      }
+    }
+    DEBUG && _debug_time.push(new Date());
+    if (html.js) {
+      this.exec(html.js, parent);
+    }
+    DEBUG && _debug_time.push(new Date());
+    return DEBUG && this.debug(parent, html, _debug_time);
+  };
+
+  AsyncDOM.prototype.debug = function(root, html, render_timeline) {
+    var debugPanel;
+    root.css("position", "relative");
+    debugPanel = Debugger.genInfo(html, render_timeline);
+    root.append(debugPanel);
+    return this.observe(root, function() {
+      return root.append(debugPanel);
+    });
+  };
+
+  AsyncDOM.prototype.observe = function(container, cb) {
+    var config, observer;
+    observer = new MutationObserver(function(mutations) {
+      cb && cb();
+      return observer.disconnect();
+    });
+    config = {
+      attributes: true,
+      childList: true,
+      characterData: true
+    };
+    return observer.observe(container[0], config);
+  };
+
+  /*
+  
+      用于显示调试信息
+  */
+
+
+  return AsyncDOM;
+
+})();
+
 Debugger = {
   id: 0,
+  genInfo: function(html, render_timeline) {
+    var debug_html_info, i, item, time_interval_stack, _i, _len, _ref;
+    time_interval_stack = [];
+    _ref = render_timeline.slice(0, render_timeline.length - 1);
+    for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
+      item = _ref[i];
+      time_interval_stack[i] = render_timeline[i + 1] - render_timeline[i];
+    }
+    if (html.dom) {
+      debug_html_info = "<textarea rows=\"10\">" + html.dom + "</textarea>";
+    } else {
+      debug_html_info = "——";
+    }
+    return $("<div class='amd'>\n    <div class='title'>ID: " + (this.id++) + "</div>\n    <div class='content'>\n        <div class='section'>渲染时间(ms)：\n            <div class='row'>解析DOM：" + time_interval_stack[0] + "</div>\n            <div class='row'>DOM插入：" + time_interval_stack[1] + "</div>\n            <div class='row'>JS执行：" + (time_interval_stack[2] || 0) + "</div>\n        </div>\n\n        <div class=\"section\">JS內容：\n            <div class=\"row\">" + (html.js || "无") + "</div>\n        </div>\n    </div>\n</div>");
+  },
   showInfo: function(target) {
     var info, origin, source, time, type;
     type = target.data('type');
     origin = target.html();
     source = target.html().replace(/(^\s*)|(\s*$)/g, "").replace(/(<\!--)|(-->)/g, "");
     time = new Date();
-    info = $("<div class='amd'>\n    <div class='title'>\n        ID: " + this.id + ", TYPE: <span class='em'>" + type + "</span><span class='time'>" + (time.toTimeString().slice(0, 9) + time.getMilliseconds()) + "</span>\n    </div>\n    <div>\n        <span><button onclick='showSourceCode(this)'>原始HTML</button><textarea>" + origin + "</textarea></span>\n        <span><button onclick='showSourceCode(this)'>解析出的代码</button><textarea>" + source + "</textarea></span>\n    </div>\n</div>");
+    info = $("<div class='amd'>\n    <div class='title'>\n        ID: " + this.id + ", TYPE: <span class='em'>" + type + "</span><span class='time'>" + (time.toTimeString().slice(0, 9) + time.getMilliseconds()) + "</span>\n    </div>\n\n    <div>\n        <span><button onclick='showSourceCode(this)'>原始HTML</button><textarea>" + origin + "</textarea></span>\n        <span><button onclick='showSourceCode(this)'>解析出的代码</button><textarea>" + source + "</textarea></span>\n    </div>\n</div>");
     info.insertBefore(target);
     return this.id++;
   },
-  init: (function() {
+  _init: (function() {
     if (!CONFIG.DEBUG) {
       return;
     }
-    $("<style type='text/css'>\n  .amd {background: #CCE8CF}\n.amd .title{background: lightgreen}\n.amd .em {color: darkred; font-weight: bold}\n.amd textarea{display: none}\n.amd .time {float: right;}\n\n#amd-code {\n    position: fixed;\n    left: 0;\n    top: 0;\n    background: #CCE8CF;\n    width: 450px;\n    height: 100%;\n}\n  </style>").appendTo("head");
+    $("<style type='text/css'>\n  .amd {background: #CCE8CF; position: absolute; z-index: 1314;top: 0;opacity: .9;width: 100%;height: 100%;left:0;}\n  .amd.html{background: }\n.amd .title{background: lightgreen;}\n.amd .section .row{padding-left: 20px;}\n.amd .em {color: darkred; font-weight: bold}\n.amd textarea{width: 100%}\n.amd .time {float: right;}\n\n#amd-code {\n    position: fixed;\n    left: 0;\n    top: 0;\n    background: #CCE8CF;\n    width: 450px;\n    height: 100%;\n}\n  </style>").appendTo("head");
     return window.showSourceCode = function(self) {
       if (!self.show) {
         $("#amd-code").remove();
@@ -144,8 +280,13 @@ Debugger = {
   })()
 };
 
-jQueryLoadModule = function() {
-  var e, origin, source, type;
+/*
+    declaration as jquery plugin method
+*/
+
+
+$.fn.loadModule = jQueryLoadModule = function() {
+  var e, type;
   try {
     type = this.data('type');
     switch (type) {
@@ -153,23 +294,15 @@ jQueryLoadModule = function() {
         tools.debug(this);
         return tools.loadAjaxData.call($(this));
       default:
-        origin = this.html().replace(/(^\s*)|(\s*$)/g, "");
-        if (origin.indexOf('<\!--') === -1) {
-          return;
-        }
-        tools.debug(this);
-        source = origin.replace(/(<\!--)|(-->)/g, "");
-        return tools.loadHtml(source, this);
+        return new AsyncDOM(this, this.html());
     }
   } catch (_error) {
     e = _error;
-    if (CONFIG.debug) {
+    if (CONFIG.DEBUG) {
       throw e;
     }
   }
 };
-
-$.fn.loadModule = jQueryLoadModule;
 
 /*
     init auto load event
@@ -181,11 +314,13 @@ $.fn.loadModule = jQueryLoadModule;
   modules = $('.async-module');
   $win = $(window);
   asyncLoad = function(preDistance) {
-    var index, moduleCountToLoad, obj, scrollTop, top, winHeight, _i, _ref;
+    var index, moduleCountLoaded, moduleCountToLoad, obj, scrollTop, start, top, winHeight, _i, _ref;
     if (preDistance == null) {
       preDistance = 0;
     }
+    DEBUG && (start = new Date());
     moduleCountToLoad = 0;
+    moduleCountLoaded = 0;
     scrollTop = $win.scrollTop();
     winHeight = $win.height();
     for (index = _i = 0, _ref = modules.length; _i < _ref; index = _i += 1) {
@@ -195,11 +330,14 @@ $.fn.loadModule = jQueryLoadModule;
         if (top < (scrollTop + winHeight + preDistance) && (scrollTop - preDistance - obj.height()) < top) {
           obj.loadModule();
           delete modules[index];
+          moduleCountLoaded++;
         } else {
           moduleCountToLoad++;
         }
       }
     }
+    DEBUG && moduleCountLoaded && (console.log(("[Async Module]:#加载的模块数" + moduleCountLoaded + "  # 执行时间-") + (new Date() - start) + "ms"));
+    DEBUG && (!moduleCountToLoad) && (console.log("[Async Module]:[DONE] 全部异步模块加载完成"));
     if (moduleCountToLoad === 0) {
       $win.off('scroll', asyncLoadTrigger);
     }
