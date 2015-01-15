@@ -1,4 +1,4 @@
-#<script type="text/coffeescript" target="/home/wangyu/IdeaProjects/piao/0213/src/static/js/widget/async_module.js">
+#<script type="text/coffeescript" target="/home/wangyu/IdeaProjects/jch/new/src/static/jsx/plugins/async_module.js">
 
 
 ###
@@ -11,12 +11,13 @@
 ###
 
 CONFIG =
-    DEBUG: false && location.search.indexOf('AD') isnt -1
+    DEBUG: true && location.search.indexOf('AD') isnt -1
 
 DEBUG = CONFIG.DEBUG
 
 if CONFIG.DEBUG is true
     CONFIG.bufferHeight =  -30
+
 
 ###
     add loadModule() as jquery plugin function
@@ -157,6 +158,7 @@ class AsyncDOM
             js: JSStripped.matched
             dom: JSStripped.remain
         }
+
 
     load: (parent)->
         # out put debug info
@@ -386,7 +388,7 @@ do ()->
                 else
                     moduleCountToLoad++
 
-        DEBUG && moduleCountLoaded && (console.log "[Async Module]:#加载的模块数#{moduleCountLoaded}  # 执行时间-" + (new Date() - start) + "ms")
+        DEBUG && moduleCountLoaded && (console.log "[Async Module]:#加载的模块数#{moduleCountLoaded}  # 执行时间: " + (new Date() - start) + "ms")
         DEBUG && (not moduleCountToLoad) && (console.log "[Async Module]:[DONE] 全部异步模块加载完成")
 
         if moduleCountToLoad is 0
